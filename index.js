@@ -1,9 +1,9 @@
 const { Client, GatewayIntentBits } = require('discord.js');
 const { exec } = require('child_process');
-require('dotenv').config();
-
 const fs = require('fs');
 const path = require('path');
+// load .env located in the bot directory (so running node from another cwd still picks it up)
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 const TOKEN = process.env.DISCORD_TOKEN;
 // keep raw env list separate (immutable)

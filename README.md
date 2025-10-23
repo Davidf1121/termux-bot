@@ -1,37 +1,60 @@
 # Termux Discord Bridge
 
-Short: a Discord bot that executes (restricted) shell commands on the host.
+A small Discord bot (Node.js) that executes shell commands on the host (designed to run on Termux or similar). This repository is public — read the security notes carefully before using.
 
-Important before publishing
-- Never commit .env or any file with tokens. If you accidentally committed secrets, remove them from git history and rotate tokens immediately.
-- Add `.env` and `allowed_users.txt` to .gitignore (already included).
+Features
+- Execute arbitrary shell commands or run executable files/scripts via Discord messages.
+- Two prefix options supported: the configured prefix (default `!term`) and a bare `!`.
+- Access control: authorized users (from DISCORD_AUTH env or runtime-added users) only.
+- Runtime management: owner can add/remove/list allowed user IDs with bot commands.
+- Persistent runtime allowed users stored in `allowed_users.txt` (gitignored).
 
-Make the repo public
-- If creating a new repo:
-  - gh repo create <name> --public --source=. --remote=origin --push
-- If repo already exists remotely:
-  - gh repo edit OWNER/REPO --visibility public
-  - or use the GitHub web UI: Settings → Danger Zone → Change repository visibility.
+Quick safety summary (read first)
+- This bot executes commands on your device. Only use with accounts you fully trust.
+- Never commit secrets (DISCORD_TOKEN, .env) — use `.env` locally and .env.example in repo.
+- Use OWNER_ID and AUTH_USER_IDS to restrict access. Rotate your token if it was ever exposed.
+- Consider running the bot inside a sandbox/container and avoid adding it to public servers.
 
-Commands to remove a tracked .env and push:
-- git rm --cached .env
-- git commit -m "Remove env from repo"
-- git push
+Run without changing directories
+- The bot loads its .env from the bot directory automatically.
+- Examples (replace /full/path with your path):
+  - node /full/path/to/termux-bot/index.js
+  - npm --prefix /full/path/to/termux-bot start
+  - or from the bot directory: cd /full/path/to/termux-bot && npm start
 
-If secrets were committed historically, use an expunging tool (git filter-repo or BFG) and rotate tokens.
+Setup
+1. Copy `.env.example` to `.env` in the bot directory and edit values (do not commit `.env`).
+2. Install dependencies: `npm install`
+3. Start the bot: `node index.js` or `npm start` (see absolute path options above).
 
-Security notes
-- Only add trusted Discord user IDs to AUTH_USER_IDS or manage allowed users carefully.
-- Use COMMAND_WHITELIST to limit allowed commands.
-- Run the bot in a sandbox/container when possible.
+Environment (see .env.example)
+- DISCORD_TOKEN — bot token (keep secret)
+- AUTH_USER_IDS — comma-separated user IDs allowed initially
+- OWNER_ID — (optional) ID allowed to add/remove users at runtime
+- PREFIX — default command prefix (default `!term`)
+- EXEC_TIMEOUT_MS, MAX_BUFFER_BYTES — execution tuning
 
-Quick setup:
-1. On Termux, install Node.js: `pkg install nodejs` (or your preferred method).
-2. Clone or copy this project into /data/data/com.termux/files/home or another folder.
-3. Create `.env` from `.env.example` and set DISCORD_TOKEN and AUTH_USER_IDS.
-4. Install dependencies: `npm install`
-5. Run: `node index.js` (or use a process manager like pm2)
+How to use (examples)
+- Run a command: `! uptime` or `!term uptime`
+- Execute a script file (must be accessible and executable by the bot process): `! ./script.sh` or `! python3 script.py`
+- If you run a file by path, ensure working directory and file permissions are correct.
 
-Usage:
-- In Discord, send a message starting with the configured PREFIX (default `!term`).
-  Example: `!term uptime`
+Owner/runtime user management
+- Only OWNER_ID (first env ID by default) may run these:
+  - List authorized IDs: `! listusers` or `!term listusers`
+  - Add an authorized ID: `! adduser 123456789012345678`
+  - Remove an authorized ID: `! removeuser 123456789012345678`
+- Added IDs are saved to `allowed_users.txt` (this file is in .gitignore).
+
+Security & best practices
+- Do NOT add this bot to public servers.
+- Keep AUTH_USER_IDS and OWNER_ID limited to trusted accounts.
+- Use minimal privileges for the user running the bot; avoid running as root.
+- Log and monitor usage; rotate tokens if compromise suspected.
+
+Repository hygiene
+- `.gitignore` excludes `.env` and `allowed_users.txt`. If you accidentally commit secrets, remove them from history and rotate tokens immediately.
+- Consider adding secret-scanning GitHub Actions for CI.
+
+Questions or want features?
+- If you want file upload support for large outputs, slash-command conversion, or safer execution sandboxes, say which and I will add it.
