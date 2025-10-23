@@ -9,8 +9,9 @@ const TOKEN = process.env.DISCORD_TOKEN;
 // keep raw env list separate (immutable)
 const AUTH_USER_IDS_ENV = (process.env.AUTH_USER_IDS || '').split(',').map(s => s.trim()).filter(Boolean);
 
-const WHITELIST = (process.env.COMMAND_WHITELIST || '').split(',').map(s => s.trim()).filter(Boolean);
 const PREFIX = process.env.PREFIX || '!term';
+// accept both configured prefix and bare "!" (avoid duplicates)
+const PREFIX_ALIASES = Array.from(new Set([PREFIX, '!'])).sort((a, b) => b.length - a.length);
 const EXEC_TIMEOUT = parseInt(process.env.EXEC_TIMEOUT_MS || '10000', 10);
 const MAX_BUFFER = parseInt(process.env.MAX_BUFFER_BYTES || '200000', 10);
 
@@ -67,9 +68,10 @@ function isAuthorized(userId) {
 	return AUTH_USER_IDS.has(userId);
 }
 
+// replace isAllowedCommand to allow any command
 function isAllowedCommand(cmd) {
-	if (WHITELIST.length === 0) return true;
-	return WHITELIST.some(prefix => cmd === prefix || cmd.startsWith(prefix + ' ') || cmd.startsWith(prefix + '\t'));
+	// whitelist removed: allow any command
+	return true;
 }
 
 function chunkString(str, size) {
@@ -87,10 +89,13 @@ client.on('messageCreate', async (message) => {
 		if (message.author.bot) return;
 
 		const content = message.content.trim();
-		if (!content.startsWith(PREFIX)) return;
+
+		// accept any of the alias prefixes (longest-first)
+		const matchedPrefix = PREFIX_ALIASES.find(p => content.startsWith(p));
+		if (!matchedPrefix) return;
 
 		// owner-only management commands (adduser, removeuser, listusers)
-		const commandRaw = content.slice(PREFIX.length).trim();
+		const commandRaw = content.slice(matchedPrefix.length).trim();
 		const [cmd, ...args] = commandRaw.split(/\s+/);
 
 		if (cmd === 'adduser' || cmd === 'removeuser' || cmd === 'listusers') {
