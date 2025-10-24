@@ -219,15 +219,59 @@ client.on('messageCreate', async (message) => {
 			return;
 		}
 
-		// ...existing isAllowedCommand check (whitelist removed earlier)...
-		if (!isAllowedCommand(command)) {
-			await message.reply('This command is not allowed by the server whitelist.');
-			return;
-		}
+		// decide whether to run via PTY (for commands that expect a terminal)
+		const needPty = /\b(proot|proot-distro|top|htop|passwd|sudo)\b/.test(command);
 
 		await message.channel.sendTyping();
 
-		// pass cwd so commands run in the selected directory
+		if (needPty) {
+			// If pty is not available, inform user
+			if (!pty) {
+				await message.reply('This command requires a pseudo-terminal (PTY). Install node-pty in the bot directory: `npm install node-pty` and restart the bot.');
+				return;
+			}
+
+			// spawn a shell in a PTY and run the command
+			try {
+				let collected = '';
+				// spawn a login shell running the command
+				const ptyProcess = pty.spawn('/bin/sh', ['-lc', command], {
+					name: 'xterm-color',
+					cwd: currentDir,
+					env: process.env,
+					cols: 120,
+					rows: 40
+				});
+
+				// collect output
+				ptyProcess.onData((data) => {
+					collected += data;
+					// avoid unbounded growth in extreme cases
+					if (collected.length > MAX_BUFFER) {
+						collected = collected.slice(-MAX_BUFFER);
+					}
+				});
+
+				// timeout/kill guard
+				const killTimer = setTimeout(() => {
+					try { ptyProcess.kill(); } catch (_) {}
+				}, EXEC_TIMEOUT + 2000);
+
+				ptyProcess.onExit(async () => {
+					clearTimeout(killTimer);
+					const out = collected || '(no output)';
+					const chunks = chunkString(out, 1900);
+					for (const c of chunks) {
+						await message.reply('```' + c + '```');
+					}
+				});
+			} catch (e) {
+				await message.reply('PTY execution error: ' + (e.message || String(e)));
+			}
+			return;
+		}
+
+		// fallback: normal exec for non-interactive commands
 		exec(command, { timeout: EXEC_TIMEOUT, maxBuffer: MAX_BUFFER, shell: '/bin/sh', cwd: currentDir }, (err, stdout, stderr) => {
 			let reply = '';
 			if (err) {
