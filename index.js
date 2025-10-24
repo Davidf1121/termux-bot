@@ -2,6 +2,7 @@ const { Client, GatewayIntentBits } = require('discord.js');
 const { exec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 // load .env located in the bot directory (so running node from another cwd still picks it up)
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
@@ -27,6 +28,10 @@ if (AUTH_USER_IDS_ENV.length === 0) {
 // file to persist additional allowed users (one ID per line)
 const ALLOWED_USERS_FILE = path.join(__dirname, 'allowed_users.txt');
 
+// state file to persist current working directory
+const STATE_FILE = path.join(__dirname, 'state.json');
+let currentDir = process.cwd();
+
 // load file-managed user IDs
 let fileUserIds = new Set();
 function loadFileUserIds() {
@@ -47,6 +52,28 @@ function saveFileUserIds() {
 	}
 }
 loadFileUserIds();
+
+// load persisted cwd if available
+function loadState() {
+	try {
+		if (!fs.existsSync(STATE_FILE)) return;
+		const raw = fs.readFileSync(STATE_FILE, 'utf8');
+		const j = JSON.parse(raw);
+		if (j && j.cwd && typeof j.cwd === 'string' && fs.existsSync(j.cwd) && fs.statSync(j.cwd).isDirectory()) {
+			currentDir = j.cwd;
+		}
+	} catch (e) {
+		console.error('Failed to load state:', e);
+	}
+}
+function saveState() {
+	try {
+		fs.writeFileSync(STATE_FILE, JSON.stringify({ cwd: currentDir }), 'utf8');
+	} catch (e) {
+		console.error('Failed to save state:', e);
+	}
+}
+loadState();
 
 // merged set of authorized IDs (env + file)
 const AUTH_USER_IDS = new Set([...AUTH_USER_IDS_ENV, ...fileUserIds]);
@@ -152,17 +179,47 @@ client.on('messageCreate', async (message) => {
 			}
 		}
 
+		// After owner-management, require authorization for normal commands
+		if (!isAuthorized(message.author.id)) {
+			await message.reply('You are not authorized to run commands.');
+			return;
+		}
+
 		const command = commandRaw; // reuse parsed command raw
 		if (!command) {
 			await message.reply('No command provided.');
 			return;
 		}
 
-		if (!isAuthorized(message.author.id)) {
-			await message.reply('You are not authorized to run commands.');
+		// handle builtin `cd` command locally so working directory persists
+		if (command === 'cd' || command.startsWith('cd ')) {
+			const targetRaw = command === 'cd' ? '' : command.slice(3).trim();
+			let target;
+			if (!targetRaw) {
+				target = process.env.HOME || os.homedir() || currentDir;
+			} else if (targetRaw.startsWith('~')) {
+				target = path.resolve((process.env.HOME || os.homedir()), targetRaw.slice(1));
+			} else if (path.isAbsolute(targetRaw)) {
+				target = targetRaw;
+			} else {
+				target = path.resolve(currentDir, targetRaw);
+			}
+
+			try {
+				if (!fs.existsSync(target) || !fs.statSync(target).isDirectory()) {
+					await message.reply(`cd: no such directory: ${target}`);
+					return;
+				}
+				currentDir = target;
+				saveState();
+				await message.reply(`Changed directory to: \`${currentDir}\``);
+			} catch (e) {
+				await message.reply('cd error: ' + (e.message || String(e)));
+			}
 			return;
 		}
 
+		// ...existing isAllowedCommand check (whitelist removed earlier)...
 		if (!isAllowedCommand(command)) {
 			await message.reply('This command is not allowed by the server whitelist.');
 			return;
@@ -170,7 +227,8 @@ client.on('messageCreate', async (message) => {
 
 		await message.channel.sendTyping();
 
-		exec(command, { timeout: EXEC_TIMEOUT, maxBuffer: MAX_BUFFER, shell: '/bin/sh' }, (err, stdout, stderr) => {
+		// pass cwd so commands run in the selected directory
+		exec(command, { timeout: EXEC_TIMEOUT, maxBuffer: MAX_BUFFER, shell: '/bin/sh', cwd: currentDir }, (err, stdout, stderr) => {
 			let reply = '';
 			if (err) {
 				reply += `Exit/Error: ${err.code || err.message}\n`;
