@@ -1,6 +1,27 @@
 # Termux Discord Bridge
 
-A small Discord bot (Node.js) that executes shell commands on the host (designed to run on Termux or similar). This repository is public — read the security notes carefully before using.
+A Discord bot (Node.js) that executes shell commands on the host. This repository is public — do NOT commit secrets.
+
+Quick install
+1. Copy `.env.example` to `.env` and edit values (do NOT commit `.env`).
+2. In the bot directory run:
+   - npm install
+   - npm start
+
+Note about node-pty and PTY-required commands
+- `node-pty` is optional. The bot works without it for non-interactive commands.
+- Commands that expect a pseudo-terminal (examples: `proot`, `proot-distro`, `top`, `htop`, interactive installers) will request node-pty at runtime if needed.
+- If you want PTY support, install `node-pty` manually in the bot directory:
+  - First check available versions: `npm view node-pty versions --json`
+  - Then install a matching version: `npm install --save node-pty@<version>`
+  - Or try: `npm install --save node-pty` (it will pick a compatible release)
+- On Termux you may need build tools before installing native modules:
+  - `pkg install clang make python pkg-config` (or equivalent)
+
+Troubleshooting ETARGET / "No matching version" errors
+- ETARGET means your package.json requested a version that npm can't find. Removing the problematic pin (done in this repo) fixes `npm install`.
+- To find valid versions: `npm view node-pty versions --json`
+- If a specific version is required by your environment, install that exact version with `npm install node-pty@x.y.z`.
 
 Features
 - Execute arbitrary shell commands or run executable files/scripts via Discord messages.
